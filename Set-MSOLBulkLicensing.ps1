@@ -77,8 +77,14 @@ function addLicense {
   $script:action = "Add"
   checkUsageLocation
   if ( $replaceAdd -eq $true ) { $targetLic = $destLic}
-  try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $targetLic `
-    -LicenseOptions $licOpt -ErrorAction Stop } catch { $addErr = $_ }
+
+  if ( $licOpt -eq $null ) {
+    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $targetLic `
+      -RemoveLicenses $targetLic -ErrorAction Stop } catch { $replaceErr = $_ }
+  } else {
+    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $targetLic `
+      -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
+    }
 
   if ( $addErr ) {
    $script:result = $addErr
@@ -111,8 +117,13 @@ function replaceLicense {
         
     if ( $targetUser.Licenses.AccountSkuId -contains $targetLic -and $targetUser.Licenses.AccountSkuId -notcontains $destLic ) {
           
-      try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
-        -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }
+      if ( $licOpt -eq $null ) {
+        try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
+          -RemoveLicenses $targetLic -ErrorAction Stop } catch { $replaceErr = $_ }
+       } else {
+         try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
+          -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
+       }
 
       if ( $replaceErr ) {
         $script:result = $replaceErr
