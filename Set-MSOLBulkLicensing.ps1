@@ -1,8 +1,6 @@
 ﻿param( 
   [Parameter( Mandatory=$true)]	
-  [string]$csv,
-  [string]$identifierHeader = "UserPrincipalName",
-  [string]$nameHeader = "Name"
+  [string]$csv
 )
 
 $i = 0
@@ -104,7 +102,7 @@ function removeLicense {
 
 function replaceLicense {
   $script:action = "Replace"
-  try { $targetUser = Get-MsolUser -UserPrincipalName $a.$identifierHeader -ErrorAction SilentlyContinue } Catch {}
+  try { $targetUser = Get-MsolUser -UserPrincipalName $a.UserPrincipalName -ErrorAction SilentlyContinue } Catch {}
     
   if ( !$targetUser ) {
     $script:action = "None"
@@ -209,8 +207,8 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
       replaceLicense
 
       $obj = [pscustomobject]@{
-        $identifierHeader = $a.$identifierHeader
-        $nameHeader = $a.$nameHeader
+        $identifierHeader = $a.UserPrincipalName
+        $nameHeader = $a.DisplayName
         Action = $action
         Result = $result
       }
