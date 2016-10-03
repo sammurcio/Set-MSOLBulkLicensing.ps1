@@ -76,14 +76,14 @@ function progress {
 function addLicense {
   $script:action = "Add"
   checkUsageLocation
-  if ( $replaceAdd -eq $true ) { $targetLic = $destLic}
+  if ( $replaceAdd -ne $true ) { $targetLic = $destLic }
 
   if ( $licOpt -eq $null ) {
-    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $targetLic `
-      -RemoveLicenses $targetLic -ErrorAction Stop } catch { $replaceErr = $_ }
+    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
+      -ErrorAction Stop } catch { $addErr = $_ }
   } else {
-    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $targetLic `
-      -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
+    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
+      -ErrorAction Stop } catch { $addErr = $_ }       
     }
 
   if ( $addErr ) {
@@ -125,7 +125,7 @@ function replaceLicense {
           -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
        }
 
-      if ( $replaceErr ) {
+     if ( $replaceErr ) {
         $script:result = $replaceErr
       } else {
         $script:result = "Succesfully replaced license $targetLic with $destLic"
@@ -204,7 +204,7 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
   Write-Host "`n1. The license $targetLic will be REMOVED and REPLACED with $destLic." -ForegroundColor Green
 
   if ( $licOpt -ne $null ) {
-    Write-Host "`n1a. The following services will not be enabled when assiging $targetLic ;`n`n$($licOptList) " -ForegroundColor Green
+    Write-Host "`n1a. The following services will not be enabled when assiging $destLic ;`n`n$($licOptList) " -ForegroundColor Green
   }
 
   Write-Host "`n*********************************************************************************" -ForegroundColor Green
@@ -218,8 +218,8 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
       replaceLicense
 
       $obj = [pscustomobject]@{
-        $identifierHeader = $a.UserPrincipalName
-        $nameHeader = $a.DisplayName
+        Username = $a.UserPrincipalName
+        DisplayName = $a.DisplayName
         Action = $action
         Result = $result
       }
@@ -247,7 +247,7 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
 }
 
 $out | Export-CSV -NoTypeInformation -Path $resultsPath
-Write-Host "`nThe log file for this operation is saved here:`n $resultsPath" -ForegroundColor Red
+Write-Host "`nThe log file for this operation is saved here:`n $resultsPath" -ForegroundColor Green
 
 
 
