@@ -24,22 +24,21 @@ if ( !$userCount ) {
 }
 
 function disableService {
-  $disable = Read-Host "`nDo you want to disable any services when assiging the new license to users? (yes/no)"
-
+  $disable = Read-Host "`nDo you want to disable any services when assiging the license $addLic to users? (yes/no)"
   if ( $disable -like "yes" ) {
-    $skuService = ( $skus | ? { $_.AccountSKUID -match $destLic } ).ServiceStatus |`
+    $skuService = ( $skus | ? { $_.AccountSKUID -match $addLic } ).ServiceStatus |`
     ? {$_.ProvisioningStatus -eq "Success"} | Select -ExpandProperty ServicePlan | Select ServiceName
     $skuServiceList = $skuService | Out-String
     cls
-    Write-Host "`nBelow is a list of all services included in the license $destLic :`n $skuServiceList" -ForegroundColor Yellow
-    $disabledServices = Read-Host "`nPlease enter the service names you wish to NOT enable when assigning the new license,`nuse the following format; $($skuService[0].ServiceName), $($skuService[$skuService.GetUpperBound(0)].ServiceName)"
+    Write-Host "`nBelow is a list of all services included in the license $addLic :`n $skuServiceList" -ForegroundColor Yellow
+    $disabledServices = Read-Host "Please enter the service name(s) you wish NOT to enable when assigning the new license,`nleave blank for none, use the following format; $($skuService[0].ServiceName), $($skuService[$skuService.GetUpperBound(0)].ServiceName)"
     cls
 
-    if ( $disabledServices -eq $null ) {
+    if ( $disabledServices -eq $null -or $disabledServices -eq "") {
       $script:licOpt = $null
       Read-Host "`nYou did not specify any services, all services will be enabled when assiging the new license, press any key to continue"
     } else {
-      $script:licOpt = New-MsolLicenseOptions -AccountSkuId $destLic -DisabledPlans $disabledServices
+      $script:licOpt = New-MsolLicenseOptions -AccountSkuId $addLic -DisabledPlans $disabledServices
       $script:licoptlist = ($licOpt.DisabledServicePlans.Replace(" ","").Split(",") | Out-String).Trim()
       $script:licoptlist = $licoptlist -replace "(?m)^", "`t"
     }
@@ -57,8 +56,21 @@ An alpha-2 code of a country of your choice is required, in order to assign to a
 Example alpha-2 country codes; US, GB, CH, MX. For a full list of countries and their alpha-2 codes please visit: 
 http://www.nationsonline.org/oneworld/country_code_list.htm" -ForegroundColor Yellow
 
-$script:alpha2code = Read-Host "`nPlease enter the desired alpha-2 code"
+$alpha2code = Read-Host "`nPlease enter the desired alpha-2 code"
+$script:alpha2code = $alpha2code.Trim()
 cls
+}
+
+function findUser { 
+
+  try { $user = Get-MsolUser -UserPrincipalName $a.UserPrincipalName -ErrorAction SilentlyContinue } Catch {}
+  if ( !$user ) {
+    $script:action = "None"
+    $script:result = "User not found in Office365"
+  } else {
+    return $user
+  }
+
 }
 
 function checkUsageLocation {
@@ -75,72 +87,79 @@ function progress {
 
 function addLicense {
   $script:action = "Add"
-  checkUsageLocation
-  if ( $replaceAdd -ne $true ) { $targetLic = $destLic }
+  if ( $targetUser ) {
 
-  if ( $licOpt -eq $null ) {
-    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
-      -ErrorAction Stop } catch { $addErr = $_ }
-  } else {
-    try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
-      -ErrorAction Stop } catch { $addErr = $_ }       
+    if ( $targetUser.Licenses.AccountSkuId -notcontains $addLic ) {
+    
+      if ( $licOpt -eq $null ) {
+        try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $addLic `
+          -ErrorAction Stop } catch { $addErr = $_ }
+      } else {
+        try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $addLic `
+           -LicenseOptions $licOpt -ErrorAction Stop } catch { $addErr = $_ }       
+      }
+    
+      if ( $addErr ) {
+        $script:result = $addErr
+      } else {
+        $script:result = "Succesfully added license $addLic"
+      }
+
+    } else {
+      $script:action = "None"
+      $script:result = "No need to add, license $addLic already assigned"
     }
 
-  if ( $addErr ) {
-   $script:result = $addErr
-  } else {
-   $script:result = "Succesfully added license $destLic"
   }
-
+  
 }
 
 function removeLicense {
   $script:action = "Remove"
-  try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -RemoveLicenses $targetLic -ErrorAction Stop } catch { $addErr = $_ }
+  if ( $targetUser ) {
+  
+    if ( $targetUser.Licenses.AccountSkuId -contains $removeLic ) {
+      try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -RemoveLicenses $removeLic -ErrorAction Stop } catch { $remErr = $_ }
+      if ( $remErr ) {
+        $script:result = $remErr
+      } else {
+       $script:result = "Succesfully removed license $removeLic"
+      }
+   
+    } else {
+      $script:action = "None"
+      $script:result = "No need to remove, license $removeLic not assigned"
+    }
 
-  if ( $addErr ) {
-   $script:result = $addErr
-  } else {
-   $script:result = "Succesfully added license $destLic"
   }
 
 }
 
 function replaceLicense {
   $script:action = "Replace"
-  try { $targetUser = Get-MsolUser -UserPrincipalName $a.UserPrincipalName -ErrorAction SilentlyContinue } Catch {}
-    
-  if ( !$targetUser ) {
-    $script:action = "None"
-    $script:result = "User not found in Office365"
-  } else {
-        
-    if ( $targetUser.Licenses.AccountSkuId -contains $targetLic -and $targetUser.Licenses.AccountSkuId -notcontains $destLic ) {
+  if ( $targetUser.Licenses.AccountSkuId -contains $removeLic -and $targetUser.Licenses.AccountSkuId -notcontains $addLic ) {
           
-      if ( $licOpt -eq $null ) {
-        try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
-          -RemoveLicenses $targetLic -ErrorAction Stop } catch { $replaceErr = $_ }
-       } else {
-         try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $destLic `
-          -RemoveLicenses $targetLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
-       }
-
-     if ( $replaceErr ) {
-        $script:result = $replaceErr
-      } else {
-        $script:result = "Succesfully replaced license $targetLic with $destLic"
-      }
-
-    } elseif ( $targetUser.Licenses.AccountSkuId -contains $targetLic -and $targetUser.Licenses.AccountSkuId -contains $destLic ) {
-      removeLicense
-    } elseif ( $targetUser.Licenses.AccountSkuId -notcontains $targetLic -and $targetUser.Licenses.AccountSkuId -contains $destLic ) {
-      $script:action = "None"
-      $script:result = "No need to replace as licensing meets desired state"
+    if ( $licOpt -eq $null ) {
+      try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $addLic `
+        -RemoveLicenses $removeLic -ErrorAction Stop } catch { $replaceErr = $_ }
     } else {
-      $script:replaceAdd = $true
-      addLicense
+      try { Set-MsolUserLicense -UserPrincipalName $targetUser.UserPrincipalName -AddLicenses $addLic `
+      -RemoveLicenses $removeLic -LicenseOptions $licOpt -ErrorAction Stop } catch { $replaceErr = $_ }       
     }
 
+    if ( $replaceErr ) {
+      $script:result = $replaceErr
+    } else {
+      $script:result = "Succesfully replaced license $removeLic with $addLic"
+    }
+
+  } elseif ( $targetUser.Licenses.AccountSkuId -notcontains $removeLic -and $targetUser.Licenses.AccountSkuId -contains $addLic ) {
+    $script:action = "None"
+    $script:result = "No need to replace as licensing meets desired state"
+  } elseif ( $targetUser.Licenses.AccountSkuId -contains $removeLic -and $targetUser.Licenses.AccountSkuId -contains $addLic ) {
+    removeLicense
+  } elseif ( $targetUser.Licenses.AccountSkuId -notcontains $removeLic -and $targetUser.Licenses.AccountSkuId -notcontains $addLic ){
+    addLicense
   }
 
 }
@@ -172,24 +191,59 @@ $action = "Add", "Replace", "Remove", "Enable", "Disable" | Out-GridView -PassTh
 cls
 
 if ( $action -match "Enable" -or $action -match "Disable" ) {
-  setAlpha2
-  Write-Host "`nYou choose to disable or enable a service(s) for all users specified that have the license $targetLic assigned." -ForegroundColor Yellow
+  Write-Host "`nYou chose to disable or enable a service(s) for all users specified that have the license $targetLic assigned." -ForegroundColor Yellow
 } elseif ( $action -match "Add" ) {
+  $addLic = $targetLic
   setAlpha2
-  Write-Host "You choose to add $targetLic to all users specified." -ForegroundColor Yellow
   disableService
+  cls
+  Write-Host "`nThe following action will be performed on the $userCount users in the provided CSV:" -ForegroundColor Green
+  Write-Host "`n*********************************************************************************" -ForegroundColor Green
+  Write-Host "`n1. The license $addLic will be assigned." -ForegroundColor Green
+  if ( $licOpt -ne $null ) {
+    Write-Host "`n1a. The following services will not be enabled when assiging $addLic ;`n`n$($licOptList) " -ForegroundColor Green
+  }
+
+  Write-Host "`n*********************************************************************************" -ForegroundColor Green
+  $run = Read-Host "`nDo you want to proceed? (Yes/No)?"
+  if ( $run -match "Yes" ) {
+    
+    foreach ( $a in $userList ) {
+      $i++
+      progress
+      $targetUser = findUser
+      addLicense
+
+      $obj = [pscustomobject]@{
+        Username = $a.UserPrincipalName
+        DisplayName = $a.DisplayName
+        Action = $action
+        Result = $result
+      }
+      
+      $out += $obj
+    }
+
+  } elseif ( $run -match "No" ) {
+    Write-Host "`nYou selected to not commit the above operation, no changes will be made and the script will now quit." -ForegroundColor Red
+    Start-Sleep -Seconds 5
+    cls
+    Exit
+  }
+
 } elseif ( $action -match "Replace" ) {
+  $removeLic = $targetLic
   setAlpha2
-  Write-Host "You choose to remove $targetLic from all users specified and assign a new license.`n $skuMessage" -ForegroundColor Yellow
-  $destLic = Read-Host "Please enter the SKU ID of the license you want to assign to all specified users"
+  Write-Host "You chose to remove $removeLic from all users specified and assign a new license.`n $skuMessage" -ForegroundColor Yellow
+  $addLic = Read-Host "Please enter the SKU ID of the license you want to assign to all specified users"
   $skuFlag = 0
   $loopCounter = 0
   Do {
-    if ( !$skus.Accountskuid.Contains($destLic) ) {
+    if ( !$skus.Accountskuid.Contains($addLic) ) {
       cls
       Write-Host "`n`nYou did not enter a vaild SKU ID or it is blank." -ForegroundColor Red
       Write-Host -Object $skuMessage -ForegroundColor Yellow
-      $destLic = Read-Host "Please enter the SKU ID of the license you want to assign to all specified users"
+      $addLic = Read-Host "Please enter the SKU ID of the license you want to assign to all specified users"
       $loopCounter++
     } else {
       $skuFlag = 1
@@ -201,20 +255,19 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
   cls
   Write-Host "`nThe following action will be performed on the $userCount users in the provided CSV:" -ForegroundColor Green
   Write-Host "`n*********************************************************************************" -ForegroundColor Green
-  Write-Host "`n1. The license $targetLic will be REMOVED and REPLACED with $destLic." -ForegroundColor Green
-
+  Write-Host "`n1. The license $removeLic will be REMOVED and REPLACED with $addLic." -ForegroundColor Green
   if ( $licOpt -ne $null ) {
-    Write-Host "`n1a. The following services will not be enabled when assiging $destLic ;`n`n$($licOptList) " -ForegroundColor Green
+    Write-Host "`n1a. The following services will not be enabled when assiging $addLic ;`n`n$($licOptList) " -ForegroundColor Green
   }
-
   Write-Host "`n*********************************************************************************" -ForegroundColor Green
   $run = Read-Host "`nDo you want to proceed? (Yes/No)?"
-
   if ( $run -match "Yes" ) {
     
     foreach ( $a in $userList ) {
       $i++
       progress
+      $targetUser = findUser
+      checkUsageLocation
       replaceLicense
 
       $obj = [pscustomobject]@{
@@ -228,19 +281,55 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
     }
 
   } elseif ( $run -match "No" ) {
-    Write-Host "`n`nYou selected to not commit the above operation, no changes will be made and the script will now quit." -ForegroundColor Red
+    Write-Host "`nYou selected to not commit the above operation, no changes will be made and the script will now quit." -ForegroundColor Red
     Start-Sleep -Seconds 5
     cls
     Exit
   } else { 
-    Write-Host "`n`nInvalid option entered, the script will now exit." -ForegroundColor Red
+    Write-Host "`nInvalid option entered, the script will now exit." -ForegroundColor Red
     Start-Sleep -Seconds 5
     cls
     Exit
   }
   
 } elseif ( $action -match "Remove" ) {
-  Write-Host "You choose to remove $targetLic from all users specified." -ForegroundColor Yellow
+  cls
+  $targetLic = $removeLic
+  Write-Host "`nThe following action will be performed on the $userCount users in the provided CSV:" -ForegroundColor Green
+  Write-Host "`n*********************************************************************************" -ForegroundColor Green
+  Write-Host "`n1. The license $removeLic will be removed." -ForegroundColor Green
+  Write-Host "`n*********************************************************************************" -ForegroundColor Green
+  $run = Read-Host "`nDo you want to proceed? (Yes/No)?"
+  if ( $run -match "Yes" ) {
+    
+    foreach ( $a in $userList ) {
+      $i++
+      progress
+      $targetUser = findUser
+      removeLicense
+
+      $obj = [pscustomobject]@{
+        Username = $a.UserPrincipalName
+        DisplayName = $a.DisplayName
+        Action = $action
+        Result = $result
+      }
+      
+      $out += $obj
+    }
+  
+  } elseif ( $run -match "No" ) {
+    Write-Host "`nYou selected to not commit the above operation, no changes will be made and the script will now quit." -ForegroundColor Red
+    Start-Sleep -Seconds 5
+    cls
+    Exit
+  } else { 
+    Write-Host "`nInvalid option entered, the script will now exit." -ForegroundColor Red
+    Start-Sleep -Seconds 5
+    cls
+    Exit
+  }
+
 } else {
   Write-Host "You did not select a licensing action in the pop-up menu, existing script" -ForegroundColor Red
   Exit
