@@ -67,10 +67,8 @@ function findUser {
   if ( !$user ) {
     $script:action = "None"
     $script:result = "User not found in Office365"
-  } else {
-    return $user
   }
-
+  return $user
 }
 
 function checkUsageLocation {
@@ -212,11 +210,13 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
       $i++
       progress
       $targetUser = findUser
-      addLicense
+      if ( $targetUser -ne $null ) {
+        checkUsageLocation
+        addLicense
+      }
 
       $obj = [pscustomobject]@{
         Username = $a.UserPrincipalName
-        DisplayName = $a.DisplayName
         Action = $action
         Result = $result
       }
@@ -267,12 +267,13 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
       $i++
       progress
       $targetUser = findUser
-      checkUsageLocation
-      replaceLicense
+      if ( $targetUser -ne $null ) {
+        checkUsageLocation
+        replaceLicense
+      }
 
       $obj = [pscustomobject]@{
         Username = $a.UserPrincipalName
-        DisplayName = $a.DisplayName
         Action = $action
         Result = $result
       }
@@ -306,11 +307,12 @@ if ( $action -match "Enable" -or $action -match "Disable" ) {
       $i++
       progress
       $targetUser = findUser
-      removeLicense
+      if ( $targetUser -ne $null ) {
+        removeLicense
+      }
 
       $obj = [pscustomobject]@{
         Username = $a.UserPrincipalName
-        DisplayName = $a.DisplayName
         Action = $action
         Result = $result
       }
